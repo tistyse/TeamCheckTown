@@ -15,21 +15,31 @@ from PyQt5.QtWidgets import QApplication, QMainWindow
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt5.QtGui import QPainter, QColor
 
-# --- 1. Base Path Configuration ---
 if getattr(sys, 'frozen', False):
     base_path = os.path.dirname(sys.executable)
 else:
     base_path = os.path.dirname(os.path.abspath(__file__))
 
-# --- 2. Enhanced Logging Setup (Rotating File Handler) ---
 log_file_path = os.path.join(base_path, "debug.log")
 
-# maxBytes=5*1024*1024 (5MB), backupCount=3 (Keeps 3 old files)
+try:
+    if os.path.exists(log_file_path):
+        with open(log_file_path, 'w', encoding='utf-8') as f:
+            f.truncate(0)
+except Exception:
+    pass
+
+logger = logging.getLogger(__name__)
+
+if logger.hasHandlers():
+    logger.handlers.clear()
+
 rotating_handler = RotatingFileHandler(
     log_file_path, 
     maxBytes=5*1024*1024, 
     backupCount=3, 
-    encoding='utf-8'
+    encoding='utf-8',
+    mode='w'
 )
 stream_handler = logging.StreamHandler(sys.stdout)
 log_format = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
@@ -37,29 +47,26 @@ log_format = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
 rotating_handler.setFormatter(log_format)
 stream_handler.setFormatter(log_format)
 
-logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 logger.addHandler(rotating_handler)
 logger.addHandler(stream_handler)
+logger.propagate = False
 
 logger.info("==========================================")
-logger.info("Application Starting")
+logger.info("Application Starting.")
 logger.info("==========================================")
 
-# --- 3. Tesseract Path & Executable Options (Core logic for Hangeul path support) ---
 tess_root = os.path.abspath(os.path.join(base_path, 'Tesseract-OCR'))
 TESSERACT_PATH = os.path.join(tess_root, 'tesseract.exe')
 tessdata_dir = os.path.join(tess_root, 'tessdata')
 
 pytesseract.pytesseract.tesseract_cmd = TESSERACT_PATH
-# [CORE] Using --tessdata-dir to force path for Hangeul directory support
 TESS_CONFIG = f'--tessdata-dir {tessdata_dir} --psm 7'
 
 logger.info(f"Tesseract Path: {TESSERACT_PATH}")
 logger.info(f"Data File Exists: {os.path.exists(os.path.join(tessdata_dir, 'eng.traineddata'))}")
 logger.info(f"Config: {TESS_CONFIG}")
 
-# --- 4. Data Loading & Constants ---
 GITHUB_TXT_URL = "https://raw.githubusercontent.com/tistyse/TeamCheckTown/refs/heads/main/friendly.txt"
 LOCAL_CACHE_FILE = os.path.join(base_path, "ally_cache.txt")
 SIMILARITY_THRESHOLD = 0.7
@@ -97,7 +104,6 @@ def load_ally_list():
 
 ALLY_LIST = load_ally_list()
 
-# --- 5. OCR Processing Thread ---
 class OCRWorker(QThread):
     result_signal = pyqtSignal(str, str)
 
@@ -175,7 +181,6 @@ class OCRWorker(QThread):
         self.running = False
         self.wait()
 
-# --- 6. Visual Overlay Window ---
 class Overlay(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -233,7 +238,9 @@ class Overlay(QMainWindow):
 
     def closeEvent(self, event):
         self.worker.stop()
+        logger.info("==========================================")
         logger.info("Application Shutdown.")
+        logger.info("==========================================")
         super().closeEvent(event)
 
 if __name__ == "__main__":
@@ -241,9 +248,6 @@ if __name__ == "__main__":
     if not os.path.exists(TESSERACT_PATH):
         logger.critical(f"Missing Tesseract: {TESSERACT_PATH}")
         sys.exit(1)
-    logger.info("==========================================")
-    logger.info("Application Started")
-    logger.info("==========================================")
     overlay = Overlay()
     overlay.show()
     sys.exit(app.exec_())
